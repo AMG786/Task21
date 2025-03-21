@@ -61,8 +61,5 @@ npm start  # or python main.py
 4. Push to the branch (`git push origin feature-branch`)
 5. Open a Pull Request
 
-## License
-This project is licensed under the MIT License. See `LICENSE` for details.
-
 ## Contact
-For any inquiries, contact [your-email@example.com](abdulmueez917@gmail.com).
+For any inquiries, contact [abdulmueez917@gmail.com](abdulmueez917@gmail.com).
