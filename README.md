@@ -1,5 +1,3 @@
-# Project Name
-
 ## Unit Converter App
 A modern and user-friendly Android application that converts between different units of measurement.
 
@@ -67,4 +65,4 @@ npm start  # or python main.py
 This project is licensed under the MIT License. See `LICENSE` for details.
 
 ## Contact
-For any inquiries, contact [your-email@example.com](mailto:your-email@example.com).
+For any inquiries, contact [your-email@example.com](abdulmueez917@gmail.com).
