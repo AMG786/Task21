@@ -12,6 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import android.text.Editable
+import android.text.TextWatcher
 /*
 Created by Abdul Mueez on 3/13/2025
  */
@@ -42,6 +44,12 @@ class MainActivity : AppCompatActivity() {
         val sourceUnitSpinner = findViewById<Spinner>(R.id.spinnerSourceUnit)
         val destinationUnitSpinner = findViewById<Spinner>(R.id.spinnerDestinationUnit)
 
+        // Initial setup to prevent null selection
+        val unitAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, lengthUnits)
+        unitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        sourceUnitSpinner.adapter = unitAdapter
+        destinationUnitSpinner.adapter = unitAdapter
+
         // Handle category selection
         categorySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -57,12 +65,27 @@ class MainActivity : AppCompatActivity() {
                 unitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 sourceUnitSpinner.adapter = unitAdapter
                 destinationUnitSpinner.adapter = unitAdapter
+
+                // Reset result text
+                findViewById<TextView>(R.id.tvResult).text = "0"
+                findViewById<TextView>(R.id.tvResult).setTextColor(resources.getColor(R.color.primary, theme))
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 // Do nothing
             }
         }
+
+        // Add TextWatcher to clear errors when user starts typing
+        findViewById<EditText>(R.id.etInputValue).addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                findViewById<EditText>(R.id.etInputValue).error = null
+            }
+
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         // Set up button click listener
         findViewById<Button>(R.id.btnConvert).setOnClickListener {
@@ -71,54 +94,144 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun convertUnits() {
-        val inputValue = findViewById<EditText>(R.id.etInputValue).text.toString().toDoubleOrNull()
+        val inputEditText = findViewById<EditText>(R.id.etInputValue)
+        val inputStr = inputEditText.text.toString().trim()
         val sourceUnit = findViewById<Spinner>(R.id.spinnerSourceUnit).selectedItem.toString()
         val destinationUnit = findViewById<Spinner>(R.id.spinnerDestinationUnit).selectedItem.toString()
+        val resultTextView = findViewById<TextView>(R.id.tvResult)
 
-        if (inputValue == null) {
-            findViewById<TextView>(R.id.tvResult).text = "Invalid input"
+        // Validate input is not empty
+        if (inputStr.isEmpty()) {
+            showError(resultTextView, "Please enter a value")
+            inputEditText.error = "Required field"
             return
         }
 
-        val result = when {
-            sourceUnit in lengthUnits && destinationUnit in lengthUnits -> convertLength(inputValue, sourceUnit, destinationUnit)
-            sourceUnit in weightUnits && destinationUnit in weightUnits -> convertWeight(inputValue, sourceUnit, destinationUnit)
-            sourceUnit in tempUnits && destinationUnit in tempUnits -> convertTemperature(inputValue, sourceUnit, destinationUnit)
-            else -> "Invalid conversion"
+        // Validate input is a valid number
+        val inputValue = try {
+            inputStr.toDouble()
+        } catch (e: NumberFormatException) {
+            showError(resultTextView, "Invalid number format")
+            inputEditText.error = "Enter a valid number"
+            return
         }
 
-        findViewById<TextView>(R.id.tvResult).text = result.toString()
+        // Check for negative values where they don't make sense
+        if (inputValue < 0 && sourceUnit in tempUnits && sourceUnit != "Celsius" && sourceUnit != "Fahrenheit") {
+            showError(resultTextView, "Value cannot be negative for this unit")
+            return
+        }
+
+        // Handle case where source and destination units are the same
+        if (sourceUnit == destinationUnit) {
+            resultTextView.text = formatResult(inputValue)
+            resultTextView.setTextColor(resources.getColor(R.color.primary, theme))
+            return
+        }
+
+        // Perform conversion based on unit types
+        try {
+            val result = when {
+                sourceUnit in lengthUnits && destinationUnit in lengthUnits ->
+                    convertLength(inputValue, sourceUnit, destinationUnit)
+                sourceUnit in weightUnits && destinationUnit in weightUnits ->
+                    convertWeight(inputValue, sourceUnit, destinationUnit)
+                sourceUnit in tempUnits && destinationUnit in tempUnits ->
+                    convertTemperature(inputValue, sourceUnit, destinationUnit)
+                else -> throw IllegalArgumentException("Incompatible unit types")
+            }
+
+            resultTextView.text = formatResult(result)
+            resultTextView.setTextColor(resources.getColor(R.color.primary, theme))
+        } catch (e: Exception) {
+            showError(resultTextView, "Conversion error: ${e.message}")
+        }
+    }
+
+    // Helper function to display error messages
+    private fun showError(textView: TextView, message: String) {
+        textView.text = message
+        // Use a standard error color that's available in your resources
+        textView.setTextColor(resources.getColor(android.R.color.holo_red_dark, theme))
+        // Or you could define your own error color in colors.xml and use:
+        // textView.setTextColor(ContextCompat.getColor(this, R.color.error))
     }
 
     private fun convertLength(value: Double, source: String, destination: String): Double {
-        // Implement length conversion logic
-        return when (source to destination) {
-            "Inch" to "Centimeter" -> value * 2.54
-            "Foot" to "Centimeter" -> value * 30.48
-            "Yard" to "Centimeter" -> value * 91.44
-            "Mile" to "Kilometer" -> value * 1.60934
-            else -> value // Default case (no conversion)
+        // Convert everything to meters first, then to target unit
+        val inMeters = when (source) {
+            "Inch" -> value * 0.0254
+            "Foot" -> value * 0.3048
+            "Yard" -> value * 0.9144
+            "Mile" -> value * 1609.34
+            "Centimeter" -> value * 0.01
+            "Kilometer" -> value * 1000
+            else -> value // Same unit, no conversion needed
+        }
+
+        return when (destination) {
+            "Inch" -> inMeters / 0.0254
+            "Foot" -> inMeters / 0.3048
+            "Yard" -> inMeters / 0.9144
+            "Mile" -> inMeters / 1609.34
+            "Centimeter" -> inMeters / 0.01
+            "Kilometer" -> inMeters / 1000
+            else -> inMeters // Same unit, no conversion needed
         }
     }
 
     private fun convertWeight(value: Double, source: String, destination: String): Double {
-        // Implement weight conversion logic
-        return when (source to destination) {
-            "Pound" to "Kilogram" -> value * 0.453592
-            "Ounce" to "Gram" -> value * 28.3495
-            "Ton" to "Kilogram" -> value * 907.185
-            else -> value // Default case (no conversion)
+        // Convert everything to kilograms first, then to target unit
+        val inKilograms = when (source) {
+            "Pound" -> value * 0.453592
+            "Ounce" -> value * 0.0283495
+            "Ton" -> value * 907.185
+            "Gram" -> value * 0.001
+            "Kilogram" -> value
+            else -> value // Same unit, no conversion needed
+        }
+
+        return when (destination) {
+            "Pound" -> inKilograms / 0.453592
+            "Ounce" -> inKilograms / 0.0283495
+            "Ton" -> inKilograms / 907.185
+            "Gram" -> inKilograms / 0.001
+            "Kilogram" -> inKilograms
+            else -> inKilograms // Same unit, no conversion needed
         }
     }
 
     private fun convertTemperature(value: Double, source: String, destination: String): Double {
-        // Implement temperature conversion logic
-        return when (source to destination) {
-            "Celsius" to "Fahrenheit" -> (value * 1.8) + 32
-            "Fahrenheit" to "Celsius" -> (value - 32) / 1.8
-            "Celsius" to "Kelvin" -> value + 273.15
-            "Kelvin" to "Celsius" -> value - 273.15
-            else -> value // Default case (no conversion)
+        // Convert everything to Kelvin first, then to target unit
+        val inKelvin = when (source) {
+            "Celsius" -> value + 273.15
+            "Fahrenheit" -> (value - 32) * 5/9 + 273.15
+            "Kelvin" -> value
+            else -> value // Same unit, no conversion needed
+        }
+
+        return when (destination) {
+            "Celsius" -> inKelvin - 273.15
+            "Fahrenheit" -> (inKelvin - 273.15) * 9/5 + 32
+            "Kelvin" -> inKelvin
+            else -> inKelvin // Same unit, no conversion needed
+        }
+    }
+
+    // Enhanced format function to handle potential floating point issues
+    private fun formatResult(value: Double): String {
+        // Handle potential floating point precision issues
+        val roundedValue = if (Math.abs(value) < 0.00001) {
+            0.0
+        } else {
+            value
+        }
+
+        // Format to 4 decimal places and remove trailing zeros
+        return if (roundedValue == roundedValue.toLong().toDouble()) {
+            roundedValue.toLong().toString()
+        } else {
+            String.format("%.4f", roundedValue).replace(Regex("0+$"), "").replace(Regex("\\.$"), "")
         }
     }
 }
